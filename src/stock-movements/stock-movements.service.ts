@@ -8,6 +8,7 @@ import {
 } from './schemas/stock-movement.schema';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
+import { StockMovementQueryDto } from './dto/stock-movement-query.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Injectable()
@@ -88,20 +89,101 @@ export class StockMovementsService {
     }
   }
 
-  // ✅ FIX B-09: เพิ่ม Pagination — ไม่ return ทุก record อีกต่อไป
-  async findAll(pagination: PaginationDto) {
-    const { page = 1, limit = 20 } = pagination;
+  // ✅ FIX: รองรับ type filter และ keyword search จาก frontend
+  async findAll(query: StockMovementQueryDto) {
+    const { page = 1, limit = 20, type, search } = query;
     const skip = (page - 1) * limit;
+
+    // ── สร้าง filter object ──────────────────────────────────────────────────
+    const filter: Record<string, any> = {};
+
+    // กรองตาม type (IN / OUT / ADJUST)
+    if (type) {
+      filter.type = type;
+    }
+
+    // ✅ FIX: search keyword ต้องค้นใน product name ด้วย → ต้องใช้ aggregate + $lookup
+    // แยกสองกรณี: ถ้าไม่มี search ใช้ find() ธรรมดา, ถ้ามี search ใช้ aggregate
+    if (search && search.trim()) {
+      return this.findAllWithSearch(filter, search.trim(), skip, +limit, +page);
+    }
 
     const [data, total] = await Promise.all([
       this.stockMovementModel
-        .find()
+        .find(filter)
         .populate('product', 'name sku currentStock')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limit)
+        .limit(+limit)
         .exec(),
-      this.stockMovementModel.countDocuments(),
+      this.stockMovementModel.countDocuments(filter),
+    ]);
+
+    return {
+      data,
+      meta: { total, page: +page, limit: +limit, totalPages: Math.ceil(total / +limit) },
+    };
+  }
+
+  // ── Search helper: ใช้ aggregate + $lookup เพื่อค้นหา product name ──────────
+  private async findAllWithSearch(
+    baseFilter: Record<string, any>,
+    search: string,
+    skip: number,
+    limit: number,
+    page: number,
+  ) {
+    const searchRegex = new RegExp(search, 'i');
+
+    const pipeline: any[] = [
+      // join Product เพื่อให้ค้นหา product.name ได้
+      {
+        $lookup: {
+          from: 'products',
+          localField: 'product',
+          foreignField: '_id',
+          as: 'productData',
+        },
+      },
+      { $unwind: { path: '$productData', preserveNullAndEmptyArrays: true } },
+      // กรอง type ก่อน (ถ้ามี)
+      ...(Object.keys(baseFilter).length ? [{ $match: baseFilter }] : []),
+      // กรอง keyword
+      {
+        $match: {
+          $or: [
+            { 'productData.name': searchRegex },
+            { reason:             searchRegex },
+            { performedBy:        searchRegex },
+            { referenceNo:        searchRegex },
+          ],
+        },
+      },
+    ];
+
+    // นับ total แยก
+    const countPipeline = [...pipeline, { $count: 'total' }];
+    const [countResult] = await this.stockMovementModel.aggregate(countPipeline);
+    const total = countResult?.total || 0;
+
+    // ดึงข้อมูลจริง
+    const data = await this.stockMovementModel.aggregate([
+      ...pipeline,
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      // จัด shape ให้เหมือน populate
+      {
+        $addFields: {
+          product: {
+            _id:          '$productData._id',
+            name:         '$productData.name',
+            sku:          '$productData.sku',
+            currentStock: '$productData.currentStock',
+          },
+        },
+      },
+      { $unset: 'productData' },
     ]);
 
     return {
@@ -124,14 +206,14 @@ export class StockMovementsService {
         .populate('product', 'name sku')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limit)
+        .limit(+limit)
         .exec(),
       this.stockMovementModel.countDocuments({ product: productId }),
     ]);
 
     return {
       data,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      meta: { total, page: +page, limit: +limit, totalPages: Math.ceil(total / +limit) },
     };
   }
 

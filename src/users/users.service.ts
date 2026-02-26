@@ -18,7 +18,7 @@ export class UsersService {
     const savedUser   = await createdUser.save();
     const userObj     = savedUser.toObject();
     delete (userObj as any).password;
-    delete (userObj as any).refreshToken; // ไม่ส่งกลับ
+    delete (userObj as any).refreshToken;
     return userObj;
   }
 
@@ -28,6 +28,11 @@ export class UsersService {
 
   async findAll() {
     return this.userModel.find().select('-password -refreshToken').exec();
+  }
+
+  // ✅ FIX: เพิ่ม countUsers สำหรับ Bootstrap Guard ใน Controller
+  async countUsers(): Promise<number> {
+    return this.userModel.countDocuments().exec();
   }
 
   // ✅ FIX B-06: บันทึก / ล้าง refresh token ใน DB
