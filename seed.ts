@@ -1,14 +1,14 @@
 /**
  * Seed Script — สร้าง ADMIN คนแรก
- * รันด้วย: node scripts/seed.js
+ * รันด้วย: npx ts-node seed.ts
  */
 
 const mongoose = require('mongoose');
 const bcrypt   = require('bcrypt');
 const path     = require('path');
 
-// โหลด .env
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+// โหลด .env จากโฟลเดอร์ปัจจุบัน (ไม่ต้องมี ../)
+require('dotenv').config(); 
 
 const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) {

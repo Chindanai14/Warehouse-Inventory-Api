@@ -15,6 +15,7 @@ import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe';
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('stock-movements')
+@Roles(UserRole.ADMIN, UserRole.STAFF)
 export class StockMovementsController {
   constructor(private readonly stockMovementsService: StockMovementsService) {}
 
@@ -38,10 +39,10 @@ export class StockMovementsController {
   }
 
   // ✅ FIX B-10: รับ startDate / endDate สำหรับ filter รายงาน
-  @ApiOperation({ summary: 'รายงานสรุป Stock IN/OUT (ADMIN เท่านั้น)' })
+  @ApiOperation({ summary: 'รายงานสรุป Stock IN/OUT (ADMIN และ STAFF)' })
   @ApiQuery({ name: 'startDate', required: false, example: '2025-01-01' })
   @ApiQuery({ name: 'endDate',   required: false, example: '2025-12-31' })
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.STAFF) // ✅ FIX: เพิ่ม UserRole.STAFF เข้ามาเพื่อให้ Staff ดู Dashboard ได้
   @Get('report')
   getReport(
     @Query('startDate') startDate?: string,
