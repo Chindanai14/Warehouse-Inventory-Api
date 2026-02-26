@@ -1,6 +1,6 @@
 import {
   IsString, IsNumber, IsNotEmpty,
-  IsOptional, Min, Max, MaxLength,
+  IsOptional, Min, Max, MaxLength, Matches,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -17,11 +17,12 @@ export class CreateProductDto {
   @MaxLength(50, { message: 'SKU ต้องไม่เกิน 50 ตัวอักษร' })
   sku: string;
 
-  @ApiProperty({ example: 'เครื่องดื่ม' })
+  // ✅ FIX B-01 + B-04: รับ categoryId เป็น ObjectId string และ validate รูปแบบ
+  @ApiProperty({ example: '507f1f77bcf86cd799439011', description: 'ObjectId ของ Category' })
   @IsString()
   @IsNotEmpty({ message: 'หมวดหมู่ห้ามว่าง' })
-  @MaxLength(100, { message: 'หมวดหมู่ต้องไม่เกิน 100 ตัวอักษร' })
-  category: string;
+  @Matches(/^[a-f\d]{24}$/i, { message: 'categoryId ต้องเป็น MongoDB ObjectId ที่ถูกต้อง' })
+  category: string; // ส่งเป็น string แต่ Mongoose จะ cast เป็น ObjectId ให้อัตโนมัติ
 
   @ApiProperty({ example: 'ขวด' })
   @IsString()
@@ -47,4 +48,11 @@ export class CreateProductDto {
   @Min(0)
   @Max(999999, { message: 'สต๊อกขั้นต่ำสูงเกินไป' })
   minStockLevel?: number;
+
+  // ✅ FIX B-04: validate supplierObjectId รูปแบบ ObjectId
+  @ApiProperty({ example: '507f1f77bcf86cd799439011', required: false })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-f\d]{24}$/i, { message: 'supplier ต้องเป็น MongoDB ObjectId ที่ถูกต้อง' })
+  supplier?: string;
 }

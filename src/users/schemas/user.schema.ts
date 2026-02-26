@@ -24,6 +24,10 @@ export class User {
 
   @Prop({ default: true })
   isActive: boolean;
+
+  // ✅ ระบุ type: String ตรงๆ เพื่อป้องกัน CannotDetermineTypeError
+  @Prop({ type: String, default: null })
+  refreshToken: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

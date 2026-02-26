@@ -5,8 +5,6 @@ import { Product, ProductDocument } from './schemas/product.schema';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
-
-// ✅ Import StockMovement เพื่อเช็คก่อนลบ
 import { StockMovement } from '../stock-movements/schemas/stock-movement.schema';
 
 @Injectable()
@@ -28,7 +26,9 @@ export class ProductsService {
     const [data, total] = await Promise.all([
       this.productModel
         .find()
+        // ✅ FIX B-01: populate category ด้วย (เดิมมีแค่ supplier)
         .populate('supplier', 'name contactPerson phone')
+        .populate('category', 'name description')
         .skip(skip)
         .limit(limit)
         .exec(),
@@ -42,31 +42,35 @@ export class ProductsService {
   }
 
   async findOne(id: string): Promise<Product> {
-    const product = await this.productModel.findById(id).exec();
+    const product = await this.productModel
+      .findById(id)
+      .populate('supplier', 'name contactPerson phone')
+      .populate('category', 'name description')
+      .exec();
     if (!product) throw new NotFoundException(`ไม่พบสินค้า ID: ${id}`);
     return product;
   }
 
   async update(id: string, dto: UpdateProductDto): Promise<Product> {
-    // ✅ FIX: ป้องกันการแก้ currentStock โดยตรงผ่าน PATCH (ต้องผ่าน StockMovement เท่านั้น)
+    // ป้องกันการแก้ currentStock โดยตรงผ่าน PATCH — ต้องผ่าน StockMovement เท่านั้น
     const { currentStock, ...safeDto } = dto as any;
 
     const product = await this.productModel
       .findByIdAndUpdate(id, safeDto, { new: true })
+      .populate('supplier', 'name contactPerson phone')
+      .populate('category', 'name description')
       .exec();
     if (!product) throw new NotFoundException(`ไม่พบสินค้า ID: ${id}`);
     return product;
   }
 
   async remove(id: string): Promise<{ message: string }> {
-    // ✅ FIX: เช็คก่อนลบว่ามีประวัติ StockMovement ผูกอยู่ไหม
     const movementCount = await this.stockMovementModel.countDocuments({ product: id });
     if (movementCount > 0) {
       throw new BadRequestException(
         `ไม่สามารถลบสินค้านี้ได้ เนื่องจากมีประวัติการเคลื่อนไหวสต๊อก ${movementCount} รายการ`,
       );
     }
-
     const product = await this.productModel.findByIdAndDelete(id).exec();
     if (!product) throw new NotFoundException(`ไม่พบสินค้า ID: ${id}`);
     return { message: 'ลบสินค้าสำเร็จ' };
@@ -76,6 +80,7 @@ export class ProductsService {
     return this.productModel
       .find({ $expr: { $lte: ['$currentStock', '$minStockLevel'] } })
       .populate('supplier', 'name contactPerson phone')
+      .populate('category', 'name')
       .exec();
   }
 }

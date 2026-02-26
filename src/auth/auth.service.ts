@@ -29,26 +29,41 @@ export class AuthService {
       expiresIn: parseInt(this.configService.get<string>('JWT_REFRESH_EXPIRATION') || '604800', 10),
     });
 
+    // ✅ FIX B-06: บันทึก refresh token (hashed) ลง DB ทันทีที่ login
+    await this.usersService.updateRefreshToken(user.userId.toString(), refreshToken);
+
     return { access_token: accessToken, refresh_token: refreshToken };
   }
 
-  // ✅ FIX: เพิ่ม Refresh Token logic
   async refreshToken(token: string) {
     try {
       const payload = this.jwtService.verify(token, {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'default_refresh_secret',
       });
 
-      // ดึง user ล่าสุดจาก DB เผื่อ role เปลี่ยน
       const user = await this.usersService.findByUsername(payload.username);
       if (!user) throw new UnauthorizedException('User not found');
 
-      const newPayload = { username: user.username, sub: user._id, role: user.role };
+      // ✅ FIX B-06: ตรวจสอบว่า refresh token ตรงกับที่บันทึกไว้ใน DB
+      // ถ้า logout ไปแล้ว refreshToken ใน DB จะเป็น null → ใช้ไม่ได้
+      const isValid = await this.usersService.validateRefreshToken(
+        (user as any)._id.toString(),
+        token,
+      );
+      if (!isValid) throw new UnauthorizedException('Refresh token ถูก revoke แล้ว กรุณา login ใหม่');
+
+      const newPayload = { username: user.username, sub: (user as any)._id, role: user.role };
       const newAccessToken = this.jwtService.sign(newPayload);
 
       return { access_token: newAccessToken };
-    } catch {
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException('Refresh token ไม่ถูกต้องหรือหมดอายุ');
     }
+  }
+
+  // ✅ FIX B-06: logout → ล้าง refresh token ใน DB ทำให้ใช้ไม่ได้ทันที
+  async logout(userId: string): Promise<void> {
+    await this.usersService.updateRefreshToken(userId, null);
   }
 }
